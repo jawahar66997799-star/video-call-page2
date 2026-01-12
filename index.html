@@ -1,102 +1,160 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<title>Manual P2P Video Call</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Simple Live Video Call</title>
 <style>
-  body { margin:0; font-family:sans-serif; background:#111; color:white; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; }
-  #form { display:flex; flex-direction:column; align-items:center; margin-bottom:20px; }
-  input { padding:10px; margin:5px; width:200px; }
-  button { padding:10px 20px; margin-top:10px; cursor:pointer; }
-  #videos { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; }
-  video { width:300px; height:200px; background:black; border:2px solid #0f0; }
+body {
+    margin:0;
+    font-family: Arial, sans-serif;
+    background:#111;
+    color:#fff;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-start;
+    padding:20px;
+}
+#login {
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    margin-bottom:20px;
+    width:300px;
+}
+input {
+    padding:10px;
+    font-size:16px;
+    border-radius:5px;
+    border:none;
+}
+button {
+    padding:10px;
+    font-size:16px;
+    border-radius:5px;
+    border:none;
+    cursor:pointer;
+    background:#00ff88;
+    color:#000;
+    font-weight:bold;
+}
+#myIdContainer {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:16px;
+    margin-top:5px;
+    padding:5px;
+    background:#222;
+    border-radius:5px;
+}
+#videos {
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-top:20px;
+}
+video {
+    width:300px;
+    height:200px;
+    background:#000;
+    border:2px solid #00ff88;
+    border-radius:5px;
+}
 </style>
 </head>
 <body>
 
-<div id="form">
-  <input type="text" id="name" placeholder="Enter your name" />
-  <input type="text" id="room" placeholder="Enter room ID" />
-  <button id="joinBtn">Join Room</button>
+<div id="login">
+    <input type="text" id="name" placeholder="Enter Your Name">
+    <input type="text" id="friendId" placeholder="Enter Friend's ID">
+    <button id="startBtn">Start Video Call</button>
+    <div id="myIdContainer">
+        <span>Your ID: <strong id="myId">-</strong></span>
+        <button id="copyIdBtn">Copy</button>
+    </div>
 </div>
 
-<div id="videos"></div>
+<div id="videos">
+    <video id="myVideo" autoplay muted></video>
+</div>
 
-<!-- PeerJS CDN -->
+<!-- PeerJS library -->
 <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 <script>
-const joinBtn = document.getElementById("joinBtn");
-const videosDiv = document.getElementById("videos");
+let myVideo = document.getElementById('myVideo');
+let videosDiv = document.getElementById('videos');
+let myIdSpan = document.getElementById('myId');
+let localStream;
 
-joinBtn.onclick = async () => {
-  const name = document.getElementById("name").value.trim();
-  const roomID = document.getElementById("room").value.trim();
-  if(!name || !roomID){ alert("Enter both name and room ID!"); return; }
+// Initialize PeerJS
+const peer = new Peer(undefined, {
+    host: '0.peerjs.com', // free PeerJS cloud server
+    port: 443,
+    secure: true
+});
 
-  document.getElementById("form").style.display = "none";
+peer.on('open', id => {
+    myIdSpan.textContent = id;
+});
 
-  // Create your peer
-  const peer = new Peer(); // random ID
-  const peers = {}; // keep track of connected peers
+// Copy ID button
+document.getElementById('copyIdBtn').addEventListener('click', () => {
+    navigator.clipboard.writeText(myIdSpan.textContent)
+        .then(()=>alert("ID Copied!"))
+        .catch(()=>alert("Failed to copy"));
+});
 
-  // Get local video + audio
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
-  } catch(err){
-    alert("Camera/microphone access denied!");
-    return;
-  }
+// Button click: request camera/mic and call friend
+document.getElementById('startBtn').addEventListener('click', async () => {
+    const friendId = document.getElementById('friendId').value;
+    const name = document.getElementById('name').value || "Anonymous";
 
-  // Show your own video
-  const myVideo = document.createElement("video");
-  myVideo.srcObject = stream;
-  myVideo.muted = true; // avoid echo
-  myVideo.autoplay = true;
-  myVideo.playsInline = true;
-  videosDiv.appendChild(myVideo);
+    if(!friendId) return alert("Enter Friend's ID");
+    
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        myVideo.srcObject = localStream;
 
-  // Connect to room using PeerJS
-  peer.on("open", id => {
-    console.log("Your Peer ID:", id);
-    // Use roomID as the connecting key
-    const conn = peer.connect(roomID);
-    conn.on("open", () => {
-      console.log("Connected to room");
-      conn.send({ name, type:"join" });
-    });
-  });
+        // Call friend
+        const call = peer.call(friendId, localStream);
+        call.on('stream', remoteStream => addVideo(remoteStream));
 
-  // Answer incoming calls
-  peer.on("call", call => {
-    call.answer(stream);
-    call.on("stream", remoteStream => {
-      addVideo(remoteStream);
-    });
-  });
+        // Notify
+        alert("Calling " + friendId + " ...");
 
-  // Connect to others in the same room
-  peer.on("connection", conn => {
-    conn.on("data", data => {
-      if(data.type==="join" && data.name){
-        // Call the new peer
-        const call = peer.call(conn.peer, stream);
-        call.on("stream", remoteStream => addVideo(remoteStream));
-      }
-    });
-  });
+    } catch(err) {
+        alert('Error accessing camera/microphone: ' + err);
+    }
+});
 
-  function addVideo(remoteStream){
-    const v = document.createElement("video");
-    v.srcObject = remoteStream;
-    v.autoplay = true;
-    v.playsInline = true;
-    videosDiv.appendChild(v);
-  }
+// Answer incoming calls
+peer.on('call', call => {
+    const accept = confirm(`Incoming call from ${call.peer}. Accept?`);
+    if(!accept) return;
 
-  alert("Joined room: " + roomID + "\nShare this room ID with your friend!");
-};
+    if(!localStream) {
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then(stream => {
+                localStream = stream;
+                myVideo.srcObject = localStream;
+                call.answer(localStream);
+                call.on('stream', remoteStream => addVideo(remoteStream));
+            }).catch(err => alert('Error accessing camera/microphone: ' + err));
+    } else {
+        call.answer(localStream);
+        call.on('stream', remoteStream => addVideo(remoteStream));
+    }
+});
+
+// Add remote video
+function addVideo(stream) {
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.autoplay = true;
+    videosDiv.appendChild(video);
+}
 </script>
 </body>
 </html>
