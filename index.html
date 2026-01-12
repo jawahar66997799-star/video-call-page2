@@ -2,109 +2,85 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Simple Video Call</title>
+<title>Simple Live Video Call</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  body { margin:0; padding:0; font-family: sans-serif; background:#111; color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; }
-  #videos { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
-  video { width:300px; height:225px; background:black; border:2px solid #0f0; }
-  #login { display:flex; flex-direction:column; align-items:center; gap:10px; }
-  input { padding:8px; width:200px; }
-  button { padding:8px 16px; cursor:pointer; background:#0f0; border:none; font-weight:bold; }
+    body { font-family: Arial, sans-serif; background: #111; color: #fff; text-align: center; }
+    input, button { padding: 10px; margin: 5px; font-size: 16px; }
+    video { width: 45%; margin: 10px; background: black; }
+    #videos { display: flex; justify-content: center; flex-wrap: wrap; }
 </style>
 </head>
 <body>
 
+<h2>Live Video Call</h2>
 <div id="login">
-  <h2>Enter Name & Room</h2>
-  <input type="text" id="username" placeholder="Your Name" />
-  <input type="text" id="room" placeholder="Room ID" />
-  <button id="joinBtn">Join Call</button>
+    <input type="text" id="name" placeholder="Enter Your Name" required>
+    <input type="text" id="room" placeholder="Enter Room ID" required>
+    <button id="joinBtn">Join Room</button>
 </div>
 
-<div id="videos" style="display:none;"></div>
+<div id="call" style="display:none;">
+    <h3>Room: <span id="roomLabel"></span></h3>
+    <div id="videos">
+        <video id="myVideo" autoplay muted></video>
+        <video id="peerVideo" autoplay></video>
+    </div>
+</div>
 
-<!-- PeerJS CDN -->
 <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-
 <script>
-let localStream;
+let myStream;
 let peer;
-let roomId;
+let conn;
+let call;
 
-document.getElementById('joinBtn').onclick = async () => {
-    const username = document.getElementById('username').value.trim();
-    roomId = document.getElementById('room').value.trim();
-    if(!username || !roomId) return alert("Enter Name & Room ID");
+document.getElementById('joinBtn').addEventListener('click', async () => {
+    const name = document.getElementById('name').value.trim();
+    const room = document.getElementById('room').value.trim();
+    if (!name || !room) return alert("Enter both name and room ID");
 
-    // Hide login
     document.getElementById('login').style.display = 'none';
-    document.getElementById('videos').style.display = 'flex';
+    document.getElementById('call').style.display = 'block';
+    document.getElementById('roomLabel').textContent = room;
 
+    // Access camera & microphone
     try {
-        // Ask permission manually
-        localStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
-
-        addVideo(localStream, username + " (You)");
-
-        // Create Peer with random ID
-        peer = new Peer(username + "-" + Math.floor(Math.random()*1000));
-
-        peer.on('open', id => {
-            console.log("Peer ID:", id);
-        });
-
-        // Listen for calls
-        peer.on('call', call => {
-            call.answer(localStream);
-            call.on('stream', remoteStream => {
-                addVideo(remoteStream, call.peer);
-            });
-        });
-
-        // Connect to others in room (simple simulation via prompt)
-        const connectTo = prompt("Enter peer IDs to call, comma separated");
-        if(connectTo) {
-            const ids = connectTo.split(',');
-            ids.forEach(id => {
-                const call = peer.call(id.trim(), localStream);
-                call.on('stream', remoteStream => {
-                    addVideo(remoteStream, id.trim());
-                });
-            });
-        }
-
-    } catch(e) {
-        alert("Camera/Microphone access denied or not supported");
-        console.error(e);
+        myStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById('myVideo').srcObject = myStream;
+    } catch(err) {
+        alert("Camera/Microphone access denied!");
+        return;
     }
-};
 
-function addVideo(stream, label) {
-    const container = document.getElementById('videos');
-    const vid = document.createElement('video');
-    vid.srcObject = stream;
-    vid.autoplay = true;
-    vid.playsInline = true;
+    // Create Peer
+    peer = new Peer(); // auto ID
 
-    const wrapper = document.createElement('div');
-    wrapper.style.position = 'relative';
-    wrapper.appendChild(vid);
+    peer.on('open', id => {
+        console.log("Your Peer ID:", id);
 
-    const nameTag = document.createElement('div');
-    nameTag.innerText = label;
-    nameTag.style.position = 'absolute';
-    nameTag.style.bottom = '5px';
-    nameTag.style.left = '5px';
-    nameTag.style.color = '#0f0';
-    nameTag.style.fontSize = '14px';
-    nameTag.style.background = 'rgba(0,0,0,0.5)';
-    nameTag.style.padding = '2px 5px';
-    nameTag.style.borderRadius = '3px';
+        // Connect to room (simple approach: call peer with same room ID)
+        // For simplicity, assume one other user with the same room ID uses same logic
+    });
 
-    wrapper.appendChild(nameTag);
-    container.appendChild(wrapper);
-}
+    // When receiving a call
+    peer.on('call', incomingCall => {
+        incomingCall.answer(myStream); // answer with local stream
+        incomingCall.on('stream', remoteStream => {
+            document.getElementById('peerVideo').srcObject = remoteStream;
+        });
+        call = incomingCall;
+    });
+
+    // Join room logic (manual entry)
+    const otherPeerId = prompt("Enter peer ID to connect (leave empty if waiting for someone)");
+    if (otherPeerId) {
+        call = peer.call(otherPeerId, myStream);
+        call.on('stream', remoteStream => {
+            document.getElementById('peerVideo').srcObject = remoteStream;
+        });
+    }
+});
 </script>
 
 </body>
