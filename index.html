@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Simple Video Call</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { margin:0; padding:0; font-family: sans-serif; background:#111; color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; }
+  #videos { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  video { width:300px; height:225px; background:black; border:2px solid #0f0; }
+  #login { display:flex; flex-direction:column; align-items:center; gap:10px; }
+  input { padding:8px; width:200px; }
+  button { padding:8px 16px; cursor:pointer; background:#0f0; border:none; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <h2>Enter Name & Room</h2>
+  <input type="text" id="username" placeholder="Your Name" />
+  <input type="text" id="room" placeholder="Room ID" />
+  <button id="joinBtn">Join Call</button>
+</div>
+
+<div id="videos" style="display:none;"></div>
+
+<!-- PeerJS CDN -->
+<script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+
+<script>
+let localStream;
+let peer;
+let roomId;
+
+document.getElementById('joinBtn').onclick = async () => {
+    const username = document.getElementById('username').value.trim();
+    roomId = document.getElementById('room').value.trim();
+    if(!username || !roomId) return alert("Enter Name & Room ID");
+
+    // Hide login
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('videos').style.display = 'flex';
+
+    try {
+        // Ask permission manually
+        localStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+
+        addVideo(localStream, username + " (You)");
+
+        // Create Peer with random ID
+        peer = new Peer(username + "-" + Math.floor(Math.random()*1000));
+
+        peer.on('open', id => {
+            console.log("Peer ID:", id);
+        });
+
+        // Listen for calls
+        peer.on('call', call => {
+            call.answer(localStream);
+            call.on('stream', remoteStream => {
+                addVideo(remoteStream, call.peer);
+            });
+        });
+
+        // Connect to others in room (simple simulation via prompt)
+        const connectTo = prompt("Enter peer IDs to call, comma separated");
+        if(connectTo) {
+            const ids = connectTo.split(',');
+            ids.forEach(id => {
+                const call = peer.call(id.trim(), localStream);
+                call.on('stream', remoteStream => {
+                    addVideo(remoteStream, id.trim());
+                });
+            });
+        }
+
+    } catch(e) {
+        alert("Camera/Microphone access denied or not supported");
+        console.error(e);
+    }
+};
+
+function addVideo(stream, label) {
+    const container = document.getElementById('videos');
+    const vid = document.createElement('video');
+    vid.srcObject = stream;
+    vid.autoplay = true;
+    vid.playsInline = true;
+
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'relative';
+    wrapper.appendChild(vid);
+
+    const nameTag = document.createElement('div');
+    nameTag.innerText = label;
+    nameTag.style.position = 'absolute';
+    nameTag.style.bottom = '5px';
+    nameTag.style.left = '5px';
+    nameTag.style.color = '#0f0';
+    nameTag.style.fontSize = '14px';
+    nameTag.style.background = 'rgba(0,0,0,0.5)';
+    nameTag.style.padding = '2px 5px';
+    nameTag.style.borderRadius = '3px';
+
+    wrapper.appendChild(nameTag);
+    container.appendChild(wrapper);
+}
+</script>
+
+</body>
+</html>
